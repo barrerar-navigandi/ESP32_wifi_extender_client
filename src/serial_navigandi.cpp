@@ -49,12 +49,14 @@ static void uart2_tx_task(void){
     Serial.print("Entered UART2 Tx Task \r\n");
     uint8_t byte;
 
+    add_self_task_wdt();
+
     while(1){
         if( xQueueReceive(Uart2_Tx_Queue_Handle, &byte, ( TickType_t ) (1000/portTICK_PERIOD_MS)) ){
               //Serial.print((char) byte);
               uart2_buffer_and_send(byte);
         }
-
+         esp_task_wdt_reset();
     }
 
 }
@@ -63,7 +65,7 @@ static void uart2_rx_task(void){//received data from serial and send to connecte
     Serial.println("Initialized UART2 Rx Task");
     uint8_t data; 
 
-    //add_self_task_wdt();
+    add_self_task_wdt();
 
     while (1) {
         const int rxBytes = uart_read_bytes(UART_NUM_2, &data, sizeof(data), 1000 / portTICK_PERIOD_MS);
@@ -71,8 +73,7 @@ static void uart2_rx_task(void){//received data from serial and send to connecte
             //Serial.print((char) data);
             buffering_uart2_rx(data);  
         }
-
-        //esp_task_wdt_reset();
+        esp_task_wdt_reset();
     }
 }
 
@@ -129,9 +130,9 @@ static void buffering_uart2_rx(uint8_t byte_received){
 static void redirect_uart2_rx_data(uint8_t *buffer, uint16_t buff_size, uint8_t id){
     switch(id){
         case NMEA_TO_ESP32_ID:
-            for(uint8_t i = 0; i < buff_size; i++){
+            /*for(uint8_t i = 0; i < buff_size; i++){
                 Serial.print( (char) buffer[i]);
-            }
+            }*/
             wifi_send_data(buffer, buff_size);
             break;
 

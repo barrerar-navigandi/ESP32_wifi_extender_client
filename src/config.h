@@ -9,6 +9,8 @@
 #include "driver/gpio.h"
 #include "serial_navigandi.h"
 #include "utils.h"
+#include "esp_task_wdt.h"
+#include "watchdog.h"
 
 
 

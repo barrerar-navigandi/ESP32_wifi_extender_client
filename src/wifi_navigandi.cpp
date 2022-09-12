@@ -4,11 +4,11 @@ WiFiClient wifi_orbis_client_obj;
 
 
 static void client_rx_task(void);
-static void client_tx_task(void);
+//static void client_tx_task(void);
 static void set_client_rx_states(client_rx_states_t state_in);
 
 //FreeRTOS
-TaskHandle_t Client_Tx_TaskHandle;
+//TaskHandle_t Client_Tx_TaskHandle;
 TaskHandle_t Client_Rx_TaskHandle;
 static portMUX_TYPE client_rx_state_flag_mutex = portMUX_INITIALIZER_UNLOCKED;
 
@@ -18,6 +18,8 @@ client_rx_states_t client_rx_state_flag = CONNECTING_STATE;
 //volatile uint8_t server_in_state_flag;
     
 IPAddress local_IP_station(192,168,4,1);//station will connect to ORBIS
+
+const uint8_t ap_mac_to_connect[6] = {0xCC, 0x93, 0x4A, 0x00, 0x94, 0xE3};
 
 void configure_wifi(void){
     bool success = true;
@@ -57,7 +59,9 @@ void configure_wifi(void){
     
 
     //Initiate trials to connect STATION to WIFI
-    WiFi.begin(WIFI_SSID_DEFAULT, WIFI_PASSWORD_DEFAULT);
+    //WiFi.begin(WIFI_SSID_DEFAULT, WIFI_PASSWORD_DEFAULT);
+    WiFi.begin(WIFI_SSID_DEFAULT, WIFI_PASSWORD_DEFAULT, (int32_t) 0 , ap_mac_to_connect);
+    
 
     if(success){
         Serial.println("Wifi successfully initialized!");
@@ -72,7 +76,7 @@ void configure_wifi(void){
 void wifi_init_freertos(void){
 
     xTaskCreate((TaskFunction_t) client_rx_task,(const char *)"CLIENT_RX_TASK", CLIENT_RX_TASK_STACK_SIZE, NULL, CLIENT_RX_TASK_PRIORITY,&Client_Rx_TaskHandle);
-	xTaskCreate((TaskFunction_t) client_tx_task,(const char *)"CLIENT_TX_TASK", CLIENT_TX_TASK_STACK_SIZE, NULL, CLIENT_TX_TASK_PRIORITY,&Client_Tx_TaskHandle);
+	//xTaskCreate((TaskFunction_t) client_tx_task,(const char *)"CLIENT_TX_TASK", CLIENT_TX_TASK_STACK_SIZE, NULL, CLIENT_TX_TASK_PRIORITY,&Client_Tx_TaskHandle);
 }
 
 static void client_rx_task(void){
@@ -81,13 +85,18 @@ static void client_rx_task(void){
     wl_status_t station_status;
     uint8_t max_retries_counter_wifi = 0;
     uint8_t max_retries_counter_client = 0;
+    uint8_t max_counter_connected = 0;
     int value;
     uint8_t byte = 0;
+
+    add_self_task_wdt();
 
     while(1){
         station_status = WiFi.status();
         switch(client_rx_state_flag){
             case CONNECTING_STATE:
+                Serial.print("CONNECTING STATE \r\n");
+
                 if(station_status == WL_CONNECTED){//try to stablish tcp/ip connection
                     Serial.print("WIFI EXTENDER CONNECTED TO ORBIS WIFI\r\n");
                     if(wifi_orbis_client_obj.connect(local_IP_station, WIFI_SERVER_PORT_DEFAULT) == 1){
@@ -99,7 +108,7 @@ static void client_rx_task(void){
                             value = TCP_KEEP_ALIVE_DEFAULT;
                             wifi_orbis_client_obj.setOption(TCP_KEEPALIVE , &value);
                             wifi_orbis_client_obj.getOption(TCP_KEEPALIVE ,&value);
-                            Serial.print("TCP KEEP ALIVE ");Serial.print(value); Serial.print("\r\n");
+                            //Serial.print("TCP KEEP ALIVE ");Serial.print(value); Serial.print("\r\n");
                         }
                         //wifi_clients_obj[client_index].getOption(TCP_KEEPIDLE  ,&value);
                         //Serial.print("TCP KEEP IDLE ");Serial.print(value); Serial.print("\r\n");
@@ -109,7 +118,7 @@ static void client_rx_task(void){
                             value = TCP_KEEPINTVL_DEFAULT;
                             wifi_orbis_client_obj.setOption(TCP_KEEPINTVL , &value);
                             wifi_orbis_client_obj.getOption(TCP_KEEPINTVL   ,&value);
-                            Serial.print("TCP KEEP INTVL ");Serial.print(value); Serial.print("\r\n");
+                            //Serial.print("TCP KEEP INTVL ");Serial.print(value); Serial.print("\r\n");
                         }
                         
                         wifi_orbis_client_obj.getOption(TCP_KEEPCNT, &value);
@@ -117,7 +126,7 @@ static void client_rx_task(void){
                             value = TCP_KEEPCNT_DEFAULT;
                             wifi_orbis_client_obj.setOption(TCP_KEEPCNT, &value);
                             wifi_orbis_client_obj.getOption(TCP_KEEPCNT, &value);
-                            Serial.print("TCP KEEP CNT ");Serial.print(value); Serial.print("\r\n");
+                            //Serial.print("TCP KEEP CNT ");Serial.print(value); Serial.print("\r\n");
                         }
 
                         wifi_orbis_client_obj.getOption(TCP_NODELAY, &value);
@@ -125,7 +134,7 @@ static void client_rx_task(void){
                             value = TCP_NODELAY_DEFAULT;
                             wifi_orbis_client_obj.setOption(TCP_NODELAY, &value);
                             wifi_orbis_client_obj.getOption(TCP_NODELAY, &value);
-                            Serial.print("TCP NO DELAY ");Serial.print(value); Serial.print("\r\n");
+                            //Serial.print("TCP NO DELAY ");Serial.print(value); Serial.print("\r\n");
                         }
                 
                         set_client_rx_states(RUNNING_STATE);
@@ -148,16 +157,18 @@ static void client_rx_task(void){
                     }
                 }
 
-                Serial.print("CONNECTING STATE \r\n");
+                
                 vTaskDelay(CONNECTING_STATE_DEFAULT_DELAY_MS/portTICK_PERIOD_MS);
                 break;
 
             case RUNNING_STATE:
                 if(wifi_orbis_client_obj.connected() != true || station_status != WL_CONNECTED){//come back to previous state if connection is lost
+                    max_counter_connected = 0;
                     wifi_orbis_client_obj.stop();
                     set_client_rx_states(CONNECTING_STATE);
 
                 }else if (wifi_orbis_client_obj.available()){//read data from orbis and send to clients connected on extension server
+                    max_counter_connected = 0;
                     while(wifi_orbis_client_obj.available()){
                         byte = wifi_orbis_client_obj.read();
                         xQueueSend(Uart2_Tx_Queue_Handle, &byte, ( TickType_t ) 1);
@@ -165,6 +176,17 @@ static void client_rx_task(void){
                     }
                 }else{//if no data received, give a task delay to let other tasks to run
                     vTaskDelay(50/portTICK_PERIOD_MS);
+                    max_counter_connected++;
+                    if(max_counter_connected > 100){ // if no data is received from Orbis for 10 s, reset
+                        Serial.print("No data received from Orbis for 5 s!");
+                       // vTaskDelay(1000/portTICK_PERIOD_MS);
+                       // ESP.restart();
+                        max_counter_connected = 0;
+                        max_retries_counter_wifi = 0;
+                        max_retries_counter_client = 0;
+                        wifi_orbis_client_obj.stop();
+                        set_client_rx_states(CONNECTING_STATE);
+                    }
                 }
                 //Serial.print("RUNNING STATE \r\n");
                 //vTaskDelay(1000/portTICK_PERIOD_MS);
@@ -172,25 +194,25 @@ static void client_rx_task(void){
 
         };
         
-        
+       esp_task_wdt_reset();  
     }
 }
 
-static void client_tx_task(void){
+/*static void client_tx_task(void){
      Serial.print("Initialized server in task\r\n");
     while(1){
-        /* switch(server_in_state_flag){
+         switch(server_in_state_flag){
             case :
                 break;
 
             case :
                 break;
 
-        };*/
+        };
 
         vTaskDelay(1000/portTICK_PERIOD_MS);
     }
-}
+}*/
 
 static void set_client_rx_states(client_rx_states_t state_in){
     taskENTER_CRITICAL(&client_rx_state_flag_mutex);
