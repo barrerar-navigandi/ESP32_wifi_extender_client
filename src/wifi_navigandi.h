@@ -4,6 +4,7 @@
 
 void configure_wifi(void);
 void wifi_init_freertos(void);
+void wifi_send_data(uint8_t *buffer, uint16_t buff_size);
 
 //WiFi Mode
 #define WIFI_MODE_DEFAULT WIFI_MODE_STA
@@ -38,8 +39,8 @@ void wifi_init_freertos(void);
 
 //Server out delay
 #define CONNECTING_STATE_DEFAULT_DELAY_MS 1000
-#define WIFI_CONNECTING_STATE_MAX_RETRIES 20
-#define CLIENT_CONNECTING_STATE_MAX_RETRIES 20
+#define WIFI_CONNECTING_STATE_MAX_RETRIES 3
+#define CLIENT_CONNECTING_STATE_MAX_RETRIES 3
 
 
 typedef enum {

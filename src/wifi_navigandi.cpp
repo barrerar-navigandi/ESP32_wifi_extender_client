@@ -198,5 +198,15 @@ static void set_client_rx_states(client_rx_states_t state_in){
     taskEXIT_CRITICAL(&client_rx_state_flag_mutex);
 }
 
+void wifi_send_data(uint8_t *buffer, uint16_t buff_size){
+        if (wifi_orbis_client_obj.connected()){//if client connect, send message
+            wifi_orbis_client_obj.write((char *) buffer, buff_size);
+        }
+    //for(uint16_t j = 0; j < (len_bytes_unstuffed-8); j++){
+        //Serial.print((char)buffer_rec_data[5+j]);
+    //}
+}
+
+
 
 
